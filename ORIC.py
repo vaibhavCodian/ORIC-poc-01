@@ -4,6 +4,21 @@ import yaml
 import mimetypes
 import argparse
 
+# --- Configuration for ignored items ---
+# Set of directory names to ignore during traversal.
+IGNORED_DIRS = {
+    'node_modules', '.terraform', '.git', '__pycache__', '.vscode', '.idea',
+    'dist', 'build', 'env', '.gitattributes', 'venv', '.vscode-test', '.cache',
+    ,'.venv', 'target', '.mypy_cache', '.pytest_cache',
+    '.tox', 'eggs', '.eggs', 'lib', 'lib64', 'bin', 'include', 'share'
+}
+
+# Set of file names to ignore.
+IGNORED_FILES = {
+    '.DS_Store', 'package-lock.json', 'yarn.lock', 'poetry.lock', 'Pipfile.lock'
+}
+# ----------------------------------------
+
 def guess_language(file_path):
     """Guesses the programming language based on file extension."""
     mime_type, _ = mimetypes.guess_type(file_path)
@@ -90,14 +105,22 @@ def process_directory(root_path, repository_name, description=""):
             'folders': []
         }
 
-        for item_name in os.listdir(folder_path):
+        for item_name in sorted(os.listdir(folder_path)):
             item_path = os.path.join(folder_path, item_name)
             relative_item_path = os.path.join(relative_path, item_name)
 
-            if item_name.startswith('.'):
-                continue
+            if os.path.isdir(item_path):
+                if item_name in IGNORED_DIRS:
+                    continue  # Skip ignored directories
+                subfolder_data = process_folder(item_path, relative_item_path)
+                # Only add the folder if it contains any files or subfolders
+                if subfolder_data['files'] or subfolder_data['folders']:
+                    folder_data['folders'].append(subfolder_data)
 
-            if os.path.isfile(item_path):
+            elif os.path.isfile(item_path):
+                if item_name in IGNORED_FILES:
+                    continue # Skip ignored files
+
                 try:
                     with open(item_path, 'r', encoding='utf-8') as f:
                         file_content = f.read()
@@ -106,9 +129,9 @@ def process_directory(root_path, repository_name, description=""):
                         with open(item_path, 'r', encoding='latin-1') as f:
                             file_content = f.read()
                     except Exception:
-                        file_content = ""
+                        file_content = "" # Mark as unreadable
                 except Exception:
-                    file_content = ""
+                    file_content = "" # Mark as unreadable
 
                 language = guess_language(item_path)
                 if language == 'ipynb':
@@ -122,21 +145,28 @@ def process_directory(root_path, repository_name, description=""):
                 }
                 folder_data['files'].append(file_data)
 
-            elif os.path.isdir(item_path):
-                subfolder_data = process_folder(item_path, relative_item_path)
-                folder_data['folders'].append(subfolder_data)
-
         return folder_data
 
-    for item_name in os.listdir(root_path):
+    for item_name in sorted(os.listdir(root_path)):
         item_path = os.path.join(root_path, item_name)
-        if item_name.startswith('.') or item_name == 'README.md':
+        
+        # Skip README as it's handled separately
+        if item_name == 'README.md':
             continue
+
         if os.path.isdir(item_path):
+            if item_name in IGNORED_DIRS:
+                continue # Skip ignored directories
             relative_item_path = os.path.join(os.path.relpath(root_path, root_path), item_name)
             subfolder_data = process_folder(item_path, relative_item_path)
-            data['folders'].append(subfolder_data)
+            # Only add the folder if it contains any files or subfolders
+            if subfolder_data['files'] or subfolder_data['folders']:
+                data['folders'].append(subfolder_data)
+
         elif os.path.isfile(item_path):
+            if item_name in IGNORED_FILES:
+                continue # Skip ignored files
+
             relative_item_path = os.path.join(os.path.relpath(root_path, root_path), item_name)
             try:
                 with open(item_path, 'r', encoding='utf-8') as f:
